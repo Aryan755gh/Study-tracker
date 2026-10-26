@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Core Biology Study Tracker</title>
+<style>
+:root { --bg:#f5f7fb; --card:#fff; --ink:#172033; --muted:#5e6a80; --line:#dce3ee; --accent:#3659c9; --soft:#edf1ff; }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{background:linear-gradient(130deg,#172b65,#3659c9);color:white;padding:28px 18px}
+.wrap{max-width:900px;margin:auto;padding:0 14px}
+h1{font-size:clamp(1.6rem,5vw,2.3rem);margin:0 0 8px}
+header p{margin:0;opacity:.92}
+main{padding:18px 0 50px}
+.panel,.day,.note{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin:14px 0;box-shadow:0 4px 16px rgba(22,35,66,.04)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+button,select{font:inherit;border-radius:10px;border:1px solid var(--line);padding:10px 12px;background:white;color:var(--ink)}
+button{cursor:pointer}
+button.primary{background:var(--accent);color:white;border-color:var(--accent)}
+.progressbar{height:10px;background:#e7ebf3;border-radius:99px;overflow:hidden;margin:8px 0}
+#progressFill{height:100%;width:0;background:var(--accent);transition:width .2s}
+.small{color:var(--muted);font-size:.92rem}
+h2{font-size:1.25rem;margin:0 0 8px}
+h3{font-size:1.03rem;margin:18px 0 6px}
+.task{display:flex;gap:11px;align-items:flex-start;padding:8px 2px;border-bottom:1px solid #eef1f6}
+.task:last-child{border-bottom:0}
+.task input{width:20px;height:20px;flex:0 0 auto;margin-top:3px;accent-color:var(--accent)}
+.task label{flex:1;cursor:pointer}
+.task input:checked+label{text-decoration:line-through;color:var(--muted)}
+.dayhead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.badge{font-size:.78rem;background:var(--soft);color:#2445aa;padding:4px 8px;border-radius:999px;white-space:nowrap}
+.hidden{display:none}
+details summary{cursor:pointer;font-weight:650}
+footer{color:var(--muted);font-size:.85rem;text-align:center;padding:15px}
+@media(min-width:680px){.twocol{display:grid;grid-template-columns:1fr 1fr;gap:14px}.twocol .day{margin:0}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+<h1>Core Biology Study Tracker</h1>
+<p>Tap a checkbox to track completion. Your progress saves in this browser on this device.</p>
+</div></header>
+<main class="wrap">
+<section class="panel">
+<h2>Overall progress</h2>
+<div class="row"><strong id="countText">0 tasks completed</strong><span class="small" id="percentText">0%</span></div>
+<div class="progressbar"><div id="progressFill"></div></div>
+<div class="row">
+<label for="phaseSelect"><strong>Choose phase:</strong></label>
+<select id="phaseSelect">
+<option value="all">All tasks</option>
+<option value="tifr">TIFR paper week · 26 Oct–1 Nov</option>
+<option value="week1">Week 1 · 2–8 Nov</option>
+<option value="week2">Week 2 · 9–15 Nov</option>
+</select>
+<button id="resetBtn">Reset all checkboxes</button>
+</div>
+<p class="small">Daily target: about 4 focused hours. If a lecture is long, split it across sessions rather than dropping question practice.</p>
+</section>
+
+<section id="tracker"></section>
+
+<section class="panel">
+<h2>Fixed resource strategy</h2>
+<div class="task"><input type="checkbox" id="rule1"><label for="rule1"><strong>PW Debashish Sir:</strong> primary for protein biochemistry and familiar foundational explanations.</label></div>
+<div class="task"><input type="checkbox" id="rule2"><label for="rule2"><strong>GDC:</strong> use for broader integrated biochemistry, metabolism, quantitative applications and specific gaps.</label></div>
+<div class="task"><input type="checkbox" id="rule3"><label for="rule3">Don't watch two full courses for the same topic. Do questions first, then use the second course only to fix a real gap.</label></div>
+<div class="task"><input type="checkbox" id="rule4"><label for="rule4">For every wrong/guessed question, label it K (knowledge), R (recall), A (application), D (data interpretation), or S (strategy).</label></div>
+</section>
+
+<section class="panel">
+<h2>Daily report template</h2>
+<p>Copy this into your chat with ChatGPT at the end of each study day:</p>
+<textarea id="report" rows="7" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font:inherit">Daily report
+Lectures completed:
+Topics completed:
+Questions attempted:
+Questions correct:
+Main difficulties:
+Study time:
+Tomorrow's task:</textarea>
+<div class="row" style="margin-top:10px"><button class="primary" id="copyReport">Copy daily report</button><span class="small" id="copyStatus" aria-live="polite"></span></div>
+</section>
+<footer>Progress is stored locally in this browser. It may not synchronise between devices or browsers.</footer>
+</main>
+<script>
+const plans = [
+{phase:"tifr", date:"Mon · 26 Oct", title:"TIFR Paper 1", tag:"Diagnostic", groups:[
+["Timed paper",["Attempt one official TIFR Biology/JGEEBILS paper under timed conditions."]],
+["Analysis",["Check answers and mark incorrect, unanswered and guessed questions.","Record five weak concepts.","Revise two high-priority mistakes."]]]},
+{phase:"tifr", date:"Tue · 27 Oct", title:"TIFR Paper 2", tag:"Patterns", groups:[
+["Timed paper",["Attempt one paper or the next available official paper."]],
+["Analysis",["Compare today's mistakes with yesterday's.","Identify recurring weaknesses and revise the most important concepts."]]]},
+{phase:"tifr", date:"Wed · 28 Oct", title:"TIFR Paper 3", tag:"Data interpretation", groups:[
+["Timed paper",["Attempt one paper under timed conditions."]],
+["Analysis",["Review experimental-design, graph and data-interpretation questions.","Record concepts you could not apply and revise two of them."]]]},
+{phase:"tifr", date:"Thu · 29 Oct", title:"TIFR Paper 4", tag:"Core concepts", groups:[
+["Timed paper",["Attempt one paper under timed conditions."]],
+["Analysis",["Identify gaps in cell biology, molecular biology and genetics.","Revise concepts using PW notes and update the error log."]]]},
+{phase:"tifr", date:"Fri · 30 Oct", title:"TIFR Paper 5", tag:"Revision", groups:[
+["Timed paper",["Attempt one paper under timed conditions."]],
+["Analysis",["Review conceptual and application-based mistakes.","Revise three recurring weak areas."]]]},
+{phase:"tifr", date:"Sat · 31 Oct", title:"TIFR Paper 6", tag:"Reattempt", groups:[
+["Timed paper",["Attempt one paper under timed conditions."]],
+["Analysis",["Reattempt selected questions you previously got wrong.","Review mechanisms and experimental concepts."]]]},
+{phase:"tifr", date:"Sun · 1 Nov", title:"TIFR Paper 7 + review", tag:"Weekly review", groups:[
+["Practice",["Attempt another official paper; if unavailable, use a legitimate practice set."]],
+["Review",["List your ten weakest concepts.","Choose the three subjects needing most attention.","Prepare materials for core biology week."]]]},
+{phase:"week1", date:"Mon · 2 Nov", title:"Carbohydrates and lipids", tag:"Biomolecules", groups:[
+["PW lecture + reference",["Watch PW lecture on carbohydrates and cover monosaccharides, disaccharides and polysaccharides.","Study glycosidic bonds and reducing sugars.","Study fatty acids, triglycerides, phospholipids and membrane lipids."]],
+["Questions + recall",["Solve 15–20 carbohydrate/lipid questions, including relevant JAM or CSIR-NET PYQs.","Explain starch vs glycogen vs cellulose without notes.","Explain why phospholipids form membranes."]]]},
+{phase:"week1", date:"Tue · 3 Nov", title:"Amino acids and proteins", tag:"PW Debashish Sir", groups:[
+["PW lecture + reference",["Use PW Debashish Sir as the primary resource for protein biochemistry.","Study amino acid classification, peptide bonds and four levels of protein structure.","Review folding, denaturation and forces stabilising protein structure."]],
+["Questions + recall",["Solve 20–25 protein/amino-acid questions.","Draw a peptide bond and compare the four protein-structure levels.","Explain how pH and temperature affect proteins."]]]},
+{phase:"week1", date:"Wed · 4 Nov", title:"Nucleic acids and nucleotides", tag:"Biomolecules", groups:[
+["PW lecture + reference",["Study purines, pyrimidines, nucleosides and nucleotides.","Review DNA vs RNA, phosphodiester bonds and complementary base pairing.","Practise identifying 5′ and 3′ strand ends."]],
+["Questions + recall",["Solve 20–25 nucleic-acid questions.","Attempt relevant molecular-biology PYQs.","Explain nucleoside vs nucleotide and why base pairing matters."]]]},
+{phase:"week1", date:"Thu · 5 Nov", title:"Enzyme kinetics", tag:"Biochemistry", groups:[
+["PW/GDC + reference",["Study Michaelis–Menten kinetics, Km and Vmax.","Understand substrate concentration vs reaction velocity.","Use GDC only if you need extra help with numerical or graph-based applications."]],
+["Questions + recall",["Solve 15–20 conceptual questions and 5–10 numericals.","Interpret enzyme-kinetics graphs.","Explain Km and solve one kinetics problem without notes."]]]},
+{phase:"week1", date:"Fri · 6 Nov", title:"Enzyme inhibition and regulation", tag:"Biochemistry", groups:[
+["Study",["Compare competitive, non-competitive and uncompetitive inhibition.","Study effects on Km and Vmax and Lineweaver–Burk plots.","Review allosteric regulation and feedback inhibition."]],
+["Questions + recall",["Solve 20–25 inhibition questions, including graph-based PYQs.","Create a comparison table for the three inhibition types.","Explain how feedback inhibition regulates a pathway."]]]},
+{phase:"week1", date:"Sat · 7 Nov", title:"Bioenergetics and metabolism", tag:"Foundations", groups:[
+["Study",["Review Gibbs free energy, exergonic vs endergonic reactions and ATP coupling.","Study oxidation–reduction reactions and metabolic regulation.","Begin glycolysis: purpose, energy investment and energy payoff."]],
+["Questions + recall",["Solve 20–25 bioenergetics/metabolism questions.","Practise ATP and redox questions.","Draw a simplified overview of glycolysis."]]]},
+{phase:"week1", date:"Sun · 8 Nov", title:"Week 1 consolidation", tag:"Test + review", groups:[
+["Revision + test",["Revise biomolecules, enzyme kinetics, inhibition and bioenergetics.","Take a 45–60 minute mixed test of about 30–40 questions.","Review every incorrect or guessed answer."]],
+["Weekly review",["Update error log and list five weakest concepts.","Make a 1–2 page revision sheet.","Mark gaps that need GDC support."]]]},
+{phase:"week2", date:"Mon · 9 Nov", title:"Membranes and transport", tag:"Cell biology", groups:[
+["Study",["Study membrane structure, lipids and proteins.","Cover diffusion, facilitated diffusion, active transport, osmosis and permeability."]],
+["Questions + recall",["Solve 20–25 membrane/transport questions.","Compare passive and active transport.","Explain the role of membrane proteins."]]]},
+{phase:"week2", date:"Tue · 10 Nov", title:"Organelles and trafficking", tag:"Cell biology", groups:[
+["Study",["Study nucleus, ER, Golgi, lysosomes and peroxisomes.","Review mitochondria, chloroplasts and basic protein targeting."]],
+["Questions + recall",["Solve 20–25 organelle questions.","Trace the path of a secreted protein.","Compare mitochondria and chloroplasts."]]]},
+{phase:"week2", date:"Wed · 11 Nov", title:"Cytoskeleton and cell division", tag:"Cell biology", groups:[
+["Study",["Study microtubules, microfilaments and intermediate filaments.","Review cell cycle, mitosis, meiosis and checkpoints.","Distinguish apoptosis from necrosis at a basic level."]],
+["Questions + recall",["Solve 20–25 questions.","Draw the cell-cycle phases.","Compare mitosis and meiosis."]]]},
+{phase:"week2", date:"Thu · 12 Nov", title:"DNA replication", tag:"Molecular biology", groups:[
+["Study",["Study semiconservative replication and DNA polymerases.","Cover leading/lagging strands, Okazaki fragments, helicase, primase, ligase and topoisomerases.","Compare prokaryotic and eukaryotic replication."]],
+["Questions + recall",["Solve 20–25 DNA-replication questions.","Draw a replication fork.","Match replication enzymes with their functions."]]]},
+{phase:"week2", date:"Fri · 13 Nov", title:"Transcription and RNA processing", tag:"Molecular biology", groups:[
+["Study",["Study RNA polymerase, promoters and transcription stages.","Compare prokaryotic and eukaryotic transcription.","Cover 5′ capping, polyadenylation, introns, exons and splicing."]],
+["Questions + recall",["Solve 20–25 transcription/RNA-processing questions.","Attempt relevant PYQs.","Explain the importance of RNA processing."]]]},
+{phase:"week2", date:"Sat · 14 Nov", title:"Translation and gene regulation", tag:"Molecular biology", groups:[
+["Study",["Study genetic code, ribosome and translation stages.","Study lac operon, transcription factors and regulatory proteins.","Review basic chromatin and epigenetic regulation."]],
+["Questions + recall",["Solve 20–25 questions.","Practise genetic-code questions and relevant PYQs.","Explain the lac operon and distinguish transcriptional vs translational regulation."]]]},
+{phase:"week2", date:"Sun · 15 Nov", title:"Methods + Week 2 test", tag:"Test + review", groups:[
+["Study",["Review electrophoresis, PCR and Southern/Northern/Western blotting.","Review microscopy, DNA sequencing principles and experimental-result interpretation."]],
+["Test + review",["Take a 45–60 minute mixed test of about 30–40 questions.","Review incorrect and guessed answers.","Make separate short revision sheets for cell biology and molecular biology.","List topics requiring GDC support."]]]}
+];
+
+const tracker = document.getElementById("tracker");
+const phaseSelect = document.getElementById("phaseSelect");
+const keys = new Set();
+function safeId(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")}
+function makeTask(text, id){
+  keys.add(id);
+  const div=document.createElement("div");div.className="task";
+  const input=document.createElement("input");input.type="checkbox";input.id=id;input.dataset.task="1";
+  input.checked=localStorage.getItem("bio-tracker-"+id)==="1";
+  const label=document.createElement("label");label.htmlFor=id;label.textContent=text;
+  input.addEventListener("change",()=>{localStorage.setItem("bio-tracker-"+id,input.checked?"1":"0");updateProgress()});
+  div.append(input,label);return div;
+}
+function render(){
+ tracker.innerHTML="";
+ const phase=phaseSelect.value;
+ plans.filter(p=>phase==="all"||p.phase===phase).forEach((p,idx)=>{
+  const card=document.createElement("section");card.className="day";
+  const head=document.createElement("div");head.className="dayhead";
+  const left=document.createElement("div");
+  const date=document.createElement("div");date.className="small";date.textContent=p.date;
+  const title=document.createElement("h2");title.textContent=p.title;
+  left.append(date,title);
+  const badge=document.createElement("span");badge.className="badge";badge.textContent=p.tag;
+  head.append(left,badge);card.append(head);
+  p.groups.forEach((g,gi)=>{
+   const h=document.createElement("h3");h.textContent=g[0];card.append(h);
+   g[1].forEach((task,ti)=>card.append(makeTask(task, safeId(p.phase+"-"+p.date+"-"+p.title+"-"+gi+"-"+ti))));
+  });
+  tracker.append(card);
+ });
+ // Extra resource strategy checks
+ ["rule1","rule2","rule3","rule4"].forEach(id=>{
+  const el=document.getElementById(id);el.checked=localStorage.getItem("bio-tracker-"+id)==="1";
+  el.onchange=()=>{localStorage.setItem("bio-tracker-"+id,el.checked?"1":"0");updateProgress()};
+ });
+ updateProgress();
+}
+function updateProgress(){
+ const all=[...document.querySelectorAll('input[data-task="1"]')];
+ // Count all plan tasks, including currently filtered out, by stored state and total definitions.
+ let total=0,done=0;
+ plans.forEach(p=>p.groups.forEach(g=>g[1].forEach((task,ti)=>{total++;const id=safeId(p.phase+"-"+p.date+"-"+p.title+"-"+p.groups.indexOf(g)+"-"+ti);if(localStorage.getItem("bio-tracker-"+id)==="1")done++;})));
+ ["rule1","rule2","rule3","rule4"].forEach(id=>{total++;if(localStorage.getItem("bio-tracker-"+id)==="1")done++;});
+ document.getElementById("countText").textContent=done+" of "+total+" tasks completed";
+ const pct=Math.round(done/total*100);document.getElementById("percentText").textContent=pct+"%";
+ document.getElementById("progressFill").style.width=pct+"%";
+}
+phaseSelect.addEventListener("change",render);
+document.getElementById("resetBtn").addEventListener("click",()=>{
+ if(confirm("Reset all tracker checkboxes on this browser?")){
+  Object.keys(localStorage).filter(k=>k.startsWith("bio-tracker-")).forEach(k=>localStorage.removeItem(k));render();
+ }
+});
+document.getElementById("copyReport").addEventListener("click",async()=>{
+ const status=document.getElementById("copyStatus");
+ try{await navigator.clipboard.writeText(document.getElementById("report").value);status.textContent="Copied. Paste it into your ChatGPT chat."}
+ catch(e){document.getElementById("report").select();status.textContent="Text selected—copy it manually."}
+});
+render();
+</script>
+</body>
+</html>

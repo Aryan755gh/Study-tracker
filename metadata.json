@@ -1,0 +1,6 @@
+{
+  "name": "StudyOS",
+  "description": "Academic study tracker OS with Google Calendar sync, Pomodoro timer, distraction blocker, gamified study stats, and ambient audio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

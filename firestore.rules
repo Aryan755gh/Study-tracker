@@ -1,0 +1,83 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidUser(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             data.xp is number &&
+             data.xp >= 0 &&
+             data.level is number &&
+             data.level >= 1 &&
+             data.streak is number &&
+             data.streak >= 0 &&
+             (!('email' in data) || data.email is string) &&
+             (!('displayName' in data) || data.displayName is string) &&
+             (!('minutesStudiedToday' in data) || data.minutesStudiedToday is number) &&
+             (!('totalFocusHours' in data) || data.totalFocusHours is number) &&
+             (!('questionsSolvedTotal' in data) || data.questionsSolvedTotal is number) &&
+             (!('lastActiveDate' in data) || data.lastActiveDate is string) &&
+             (!('createdAt' in data) || data.createdAt is timestamp) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    function isValidSession(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             data.durationMinutes is number &&
+             data.durationMinutes > 0 &&
+             data.durationMinutes <= 360 &&
+             (!('id' in data) || data.id is string) &&
+             (!('mode' in data) || data.mode is string) &&
+             (!('soundUsed' in data) || data.soundUsed is string) &&
+             (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    function isValidLog(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             (!('id' in data) || data.id is string) &&
+             (!('dateKey' in data) || data.dateKey is string) &&
+             (!('topic' in data) || data.topic is string) &&
+             (!('questionsAttempted' in data) || (data.questionsAttempted is number && data.questionsAttempted >= 0)) &&
+             (!('questionsCorrect' in data) || (data.questionsCorrect is number && data.questionsCorrect >= 0)) &&
+             (!('accuracy' in data) || (data.accuracy is number && data.accuracy >= 0 && data.accuracy <= 100)) &&
+             (!('notes' in data) || data.notes is string) &&
+             (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    // User profile document
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isValidUser(request.resource.data);
+      allow delete: if false;
+
+      // Completed study sessions subcollection
+      match /sessions/{sessionId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidSession(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      // Daily study reflection logs subcollection
+      match /logs/{logId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidLog(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

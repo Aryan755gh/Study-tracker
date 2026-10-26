@@ -1,0 +1,52 @@
+{
+  "entities": {
+    "UserProfile": {
+      "collection": "users",
+      "path": "users/{userId}",
+      "description": "User profile with study gamification state and stats",
+      "fields": {
+        "userId": { "type": "string", "description": "The authenticated user's UID" },
+        "email": { "type": "string", "description": "User email" },
+        "displayName": { "type": "string", "description": "User display name" },
+        "xp": { "type": "number", "description": "Total scholar XP" },
+        "level": { "type": "number", "description": "Current scholar level" },
+        "streak": { "type": "number", "description": "Current active study day streak" },
+        "minutesStudiedToday": { "type": "number", "description": "Minutes studied today" },
+        "totalFocusHours": { "type": "number", "description": "Total focus hours accumulated" },
+        "questionsSolvedTotal": { "type": "number", "description": "Total questions attempted and solved" },
+        "lastActiveDate": { "type": "string", "description": "Last active date key (YYYY-MM-DD)" },
+        "createdAt": { "type": "timestamp", "description": "Profile creation timestamp" },
+        "updatedAt": { "type": "timestamp", "description": "Profile last updated timestamp" }
+      }
+    },
+    "StudySessionRecord": {
+      "collection": "sessions",
+      "path": "users/{userId}/sessions/{sessionId}",
+      "description": "Recorded completed Pomodoro and focus study sessions",
+      "fields": {
+        "id": { "type": "string", "description": "Session record unique ID" },
+        "userId": { "type": "string", "description": "Owner user UID" },
+        "durationMinutes": { "type": "number", "description": "Duration in minutes" },
+        "mode": { "type": "string", "description": "Mode of study: focus, deep_work, break" },
+        "soundUsed": { "type": "string", "description": "Ambient audio type used" },
+        "createdAt": { "type": "timestamp", "description": "Timestamp of session completion" }
+      }
+    },
+    "DailyLogRecord": {
+      "collection": "logs",
+      "path": "users/{userId}/logs/{logId}",
+      "description": "Daily study reflection and mistake error log",
+      "fields": {
+        "id": { "type": "string", "description": "Unique daily log identifier" },
+        "userId": { "type": "string", "description": "Owner user UID" },
+        "dateKey": { "type": "string", "description": "Date format YYYY-MM-DD" },
+        "topic": { "type": "string", "description": "Topic studied" },
+        "questionsAttempted": { "type": "number", "description": "Questions attempted" },
+        "questionsCorrect": { "type": "number", "description": "Questions correct" },
+        "accuracy": { "type": "number", "description": "Accuracy percentage" },
+        "notes": { "type": "string", "description": "Mistakes, doubts, and next priorities" },
+        "createdAt": { "type": "timestamp", "description": "Log creation timestamp" }
+      }
+    }
+  }
+}
