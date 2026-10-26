@@ -15,6 +15,7 @@ val StudyMint = Color(0xFF7CDBB1)
 val StudyMintGlow = Color(0xFFB7F4D7)
 val StudyBlue = Color(0xFF8BB8FF)
 val StudyYellow = Color(0xFFFFD27D)
+val StudyOrange = Color(0xFFFF9E66)
 val StudyRed = Color(0xFFFF9A9A)
 val StudyPurple = Color(0xFFC49BF0)
 

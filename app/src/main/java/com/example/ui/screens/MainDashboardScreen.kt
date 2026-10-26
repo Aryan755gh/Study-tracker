@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.calendar.CalendarSyncManager
 import com.example.ui.components.AudioPlayerBar
+import com.example.ui.components.StudyAnalyticsChart
 import com.example.ui.theme.*
 import com.example.viewmodel.ScreenTab
 import com.example.viewmodel.StudyViewModel
@@ -64,6 +65,16 @@ fun MainDashboardScreen(
     val gamification by viewModel.repository.gamification.collectAsState()
     val academicDays by viewModel.repository.academicDays.collectAsState()
     val completedIds by viewModel.repository.completedTaskIds.collectAsState()
+    val unsyncedCount by viewModel.repository.unsyncedCount.collectAsState()
+    val weeklyProgress by viewModel.repository.weeklyProgress.collectAsState()
+
+    // Gemini AI Coach State
+    val aiCoachState by viewModel.aiCoachState.collectAsState()
+    var showAiDoubtDialog by remember { mutableStateOf(false) }
+    var showAiMistakeDialog by remember { mutableStateOf(false) }
+    var aiTopicInput by remember { mutableStateOf("") }
+    var aiQuestionInput by remember { mutableStateOf("") }
+    var aiMistakeNotesInput by remember { mutableStateOf("") }
 
     var selectedSessionDuration by remember { mutableIntStateOf(25) }
 
@@ -195,42 +206,82 @@ fun MainDashboardScreen(
                                         fontWeight = FontWeight.Bold
                                     )
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.CloudDone,
-                                            contentDescription = "Cloud Synced",
-                                            tint = StudyMint,
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "Firebase Cloud Synced",
-                                            color = StudyMint,
-                                            fontSize = 11.sp
-                                        )
+                                        if (unsyncedCount > 0) {
+                                            Icon(
+                                                imageVector = Icons.Default.Sync,
+                                                contentDescription = "Room Local Pending Sync",
+                                                tint = StudyOrange,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Room DB: $unsyncedCount pending",
+                                                color = StudyOrange,
+                                                fontSize = 11.sp
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Default.CloudDone,
+                                                contentDescription = "Cloud Synced",
+                                                tint = StudyMint,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Room SQLite & Cloud in sync ✓",
+                                                color = StudyMint,
+                                                fontSize = 11.sp
+                                            )
+                                        }
                                     }
                                 }
                             }
 
-                            TextButton(
-                                onClick = { viewModel.authManager.signOut(coroutineScope) },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                            ) {
-                                Text("Sign out", color = StudyTextMuted, fontSize = 11.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (unsyncedCount > 0) {
+                                    Button(
+                                        onClick = { viewModel.syncLocalRoomToCloud() },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = StudyOrange,
+                                            contentColor = Color.Black
+                                        ),
+                                        shape = RoundedCornerShape(6.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        modifier = Modifier.testTag("sync_room_now_button")
+                                    ) {
+                                        Text("Sync Now", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
+                                TextButton(
+                                    onClick = { viewModel.authManager.signOut(coroutineScope) },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text("Sign out", color = StudyTextMuted, fontSize = 11.sp)
+                                }
                             }
                         } else {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    imageVector = Icons.Default.CloudQueue,
-                                    contentDescription = "Cloud Offline",
-                                    tint = StudyTextMuted,
-                                    modifier = Modifier.size(20.dp)
+                                    imageVector = Icons.Default.Storage,
+                                    contentDescription = "Room Local DB",
+                                    tint = StudyMint,
+                                    modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Sync study stats to Cloud",
-                                    color = StudyTextSecondary,
-                                    fontSize = 12.sp
-                                )
+                                Column {
+                                    Text(
+                                        text = "Room SQLite Local Active",
+                                        color = StudyTextPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = if (unsyncedCount > 0) "$unsyncedCount records saved in Room DB" else "Sign in to backup to Firestore",
+                                        color = StudyTextSecondary,
+                                        fontSize = 10.sp
+                                    )
+                                }
                             }
 
                             Button(
@@ -615,6 +666,16 @@ fun MainDashboardScreen(
             }
         }
 
+        // DATA VISUALIZATION: ROOM DATABASE STUDY SESSION PROGRESS & STREAKS
+        item {
+            StudyAnalyticsChart(
+                progressPoints = weeklyProgress,
+                streakDays = gamification.streak,
+                targetMinutes = gamification.targetMinutes,
+                onRefresh = { viewModel.repository.refreshProgressData() }
+            )
+        }
+
         // QUICK-VIEW: TODAY'S CALENDAR EVENTS & SYLLABUS
         item {
             Card(
@@ -793,6 +854,193 @@ fun MainDashboardScreen(
             }
         }
 
+        // GEMINI AI ACADEMIC COACH CARD
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("gemini_ai_coach_card"),
+                colors = CardDefaults.cardColors(containerColor = StudyPanel),
+                border = CardDefaults.outlinedCardBorder().copy(
+                    brush = androidx.compose.ui.graphics.SolidColor(StudyPurple.copy(alpha = 0.6f))
+                ),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = CircleShape,
+                                color = StudyPurple.copy(alpha = 0.2f),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = "Gemini AI",
+                                        tint = StudyPurple,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Gemini AI Academic Mentor",
+                                    color = StudyTextPrimary,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "gemini-3.8-flash · Doubt solver & error analysis",
+                                    color = StudyPurple,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        Surface(
+                            color = StudySurfaceVariant,
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = "GEMINI 3.8",
+                                color = StudyMint,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = "Instant high-yield explanations for biology & science concepts, plus K/R/A/D/S mistake categorization.",
+                        color = StudyTextSecondary,
+                        fontSize = 12.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                aiTopicInput = todayAcademicDay?.title ?: "Protein Biochemistry"
+                                showAiDoubtDialog = true
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = StudyPurple,
+                                contentColor = Color(0xFF1D0E30)
+                            ),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.HelpOutline, contentDescription = "Doubt", modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Ask Concept Doubt", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                aiTopicInput = todayAcademicDay?.title ?: "Practice PYQs"
+                                showAiMistakeDialog = true
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            border = CardDefaults.outlinedCardBorder().copy(
+                                brush = androidx.compose.ui.graphics.SolidColor(StudyBorderLight)
+                            ),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = StudyTextPrimary)
+                        ) {
+                            Icon(Icons.Default.Analytics, contentDescription = "Analyze", modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Analyze Mistakes", fontSize = 11.sp)
+                        }
+                    }
+
+                    // Display AI Response if available
+                    when (val state = aiCoachState) {
+                        is com.example.ai.AiCoachState.Loading -> {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = StudyPurple,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "Gemini AI is analyzing your query...",
+                                    color = StudyPurple,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                        is com.example.ai.AiCoachState.Success -> {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Surface(
+                                color = StudyPanelElevated,
+                                shape = RoundedCornerShape(12.dp),
+                                border = CardDefaults.outlinedCardBorder().copy(
+                                    brush = androidx.compose.ui.graphics.SolidColor(StudyPurple.copy(alpha = 0.5f))
+                                )
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "GEMINI ACADEMIC INSIGHT",
+                                            color = StudyPurple,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                        IconButton(
+                                            onClick = { viewModel.dismissAiState() },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(Icons.Default.Close, contentDescription = "Close", tint = StudyTextMuted, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = state.response,
+                                        color = StudyTextPrimary,
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp
+                                    )
+                                }
+                            }
+                        }
+                        is com.example.ai.AiCoachState.Error -> {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = "AI Notice: ${state.message}",
+                                color = StudyRed,
+                                fontSize = 12.sp
+                            )
+                        }
+                        else -> {}
+                    }
+                }
+            }
+        }
+
         // Ambient Audio Synthesizer Bar
         item {
             AudioPlayerBar(viewModel = viewModel)
@@ -862,5 +1110,112 @@ fun MainDashboardScreen(
                 }
             }
         }
+    }
+
+    // AI Ask Doubt Dialog
+    if (showAiDoubtDialog) {
+        AlertDialog(
+            onDismissRequest = { showAiDoubtDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = "AI", tint = StudyPurple, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Ask Gemini AI Mentor", color = StudyTextPrimary)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = aiTopicInput,
+                        onValueChange = { aiTopicInput = it },
+                        label = { Text("Topic") },
+                        placeholder = { Text("e.g. Enzyme inhibition, Lineweaver–Burk") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = aiQuestionInput,
+                        onValueChange = { aiQuestionInput = it },
+                        label = { Text("Your Doubt / Concept Question") },
+                        placeholder = { Text("e.g. How do competitive and non-competitive inhibitors differ in their effect on Km and Vmax?") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(110.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (aiQuestionInput.isNotBlank()) {
+                            viewModel.askAiCoach(aiTopicInput, aiQuestionInput)
+                            showAiDoubtDialog = false
+                            aiQuestionInput = ""
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StudyPurple, contentColor = Color(0xFF1D0E30))
+                ) {
+                    Text("Ask Gemini")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAiDoubtDialog = false }) {
+                    Text("Cancel", color = StudyTextSecondary)
+                }
+            },
+            containerColor = StudyPanel
+        )
+    }
+
+    // AI Mistake Analyzer Dialog
+    if (showAiMistakeDialog) {
+        AlertDialog(
+            onDismissRequest = { showAiMistakeDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Analytics, contentDescription = "Analytics", tint = StudyMint, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Analyze Mistakes [K/R/A/D/S]", color = StudyTextPrimary)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = aiTopicInput,
+                        onValueChange = { aiTopicInput = it },
+                        label = { Text("Topic") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = aiMistakeNotesInput,
+                        onValueChange = { aiMistakeNotesInput = it },
+                        label = { Text("Your Mistakes & Difficulties") },
+                        placeholder = { Text("e.g. Got question 14 wrong because I confused uncompetitive with noncompetitive slope; ran out of time on data graph questions") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(110.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (aiMistakeNotesInput.isNotBlank()) {
+                            viewModel.analyzeMistakesWithAi(aiTopicInput, aiMistakeNotesInput)
+                            showAiMistakeDialog = false
+                            aiMistakeNotesInput = ""
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StudyMint, contentColor = Color(0xFF092017))
+                ) {
+                    Text("Classify with Gemini")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAiMistakeDialog = false }) {
+                    Text("Cancel", color = StudyTextSecondary)
+                }
+            },
+            containerColor = StudyPanel
+        )
     }
 }

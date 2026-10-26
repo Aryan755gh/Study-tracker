@@ -149,3 +149,16 @@ data class CalendarSyncEvent(
     val durationMin: Int,
     val description: String
 )
+
+data class DayProgressPoint(
+    val dateKey: String,          // "2026-10-26"
+    val dayName: String,          // "Mon"
+    val shortDate: String,        // "26 Oct"
+    val focusMinutes: Int,
+    val targetMinutes: Int = 240,
+    val sessionCount: Int = 0,
+    val questionsSolved: Int = 0,
+    val accuracy: Int = 0,
+    val isStreakDay: Boolean = false,
+    val streakLevel: Int = 0      // 0 to 4 intensity
+)

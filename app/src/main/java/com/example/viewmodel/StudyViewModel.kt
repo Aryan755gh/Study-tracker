@@ -37,6 +37,46 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
     val audioSynthesizer = AmbientAudioSynthesizer()
     val authManager = FirebaseAuthManager(application)
     val firestoreRepository = FirebaseFirestoreRepository(application)
+    val aiCoach = com.example.ai.StudyAiCoach()
+
+    private val _aiCoachState = MutableStateFlow<com.example.ai.AiCoachState>(com.example.ai.AiCoachState.Idle)
+    val aiCoachState = _aiCoachState.asStateFlow()
+
+    fun askAiCoach(topic: String, question: String) {
+        if (question.isBlank()) return
+        _aiCoachState.value = com.example.ai.AiCoachState.Loading
+        viewModelScope.launch {
+            try {
+                val answer = aiCoach.explainConcept(topic, question)
+                _aiCoachState.value = com.example.ai.AiCoachState.Success(answer)
+                repository.addXp(15, "AI Academic Consultation")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _aiCoachState.value = com.example.ai.AiCoachState.Error(e.localizedMessage ?: "AI consultation failed.")
+            }
+        }
+    }
+
+    fun analyzeMistakesWithAi(topic: String, notes: String) {
+        if (notes.isBlank()) return
+        _aiCoachState.value = com.example.ai.AiCoachState.Loading
+        viewModelScope.launch {
+            try {
+                val analysis = aiCoach.analyzeMistakes(topic, notes)
+                _aiCoachState.value = com.example.ai.AiCoachState.Success(analysis)
+                repository.addXp(25, "AI Mistake Analysis [K/R/A/D/S]")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _aiCoachState.value = com.example.ai.AiCoachState.Error(e.localizedMessage ?: "AI mistake analysis failed.")
+            }
+        }
+    }
+
+    fun dismissAiState() {
+        _aiCoachState.value = com.example.ai.AiCoachState.Idle
+    }
 
     // Navigation (Default to DASHBOARD)
     private val _currentTab = MutableStateFlow(ScreenTab.DASHBOARD)
@@ -201,15 +241,19 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
         if (!_isBreakMode.value) {
             val minutesCompleted = _timerDurationTotal.value / 60
             repository.addFocusMinutes(minutesCompleted)
+
+            // 1. Store locally in Room Database first
+            repository.recordSessionInRoom(
+                durationMinutes = minutesCompleted,
+                mode = "focus",
+                soundUsed = audioSynthesizer.currentSound.value.name
+            )
+
             _timerCaption.value = "Session complete! +$minutesCompleted XP earned. Take a break!"
 
+            // 2. Sync pending Room records to Firestore
             viewModelScope.launch {
-                firestoreRepository.recordStudySession(
-                    durationMinutes = minutesCompleted,
-                    mode = "focus",
-                    soundUsed = audioSynthesizer.currentSound.value.name
-                )
-                firestoreRepository.syncUserProfile(repository.gamification.value, repository.todayKey)
+                repository.syncLocalRoomWithFirestore(firestoreRepository)
             }
         } else {
             _timerCaption.value = "Break finished. Time to get back into flow!"
@@ -217,10 +261,17 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveTodayLogWithCloudSync(topic: String, questionsAtt: Int, questionsCorr: Int, notes: String) {
+        // Saves locally in Room & updates state
         repository.saveTodayLog(topic, questionsAtt, questionsCorr, notes)
         viewModelScope.launch {
-            firestoreRepository.recordDailyLog(repository.todayLog.value)
-            firestoreRepository.syncUserProfile(repository.gamification.value, repository.todayKey)
+            repository.syncLocalRoomWithFirestore(firestoreRepository)
+        }
+    }
+
+    fun syncLocalRoomToCloud() {
+        viewModelScope.launch {
+            val count = repository.syncLocalRoomWithFirestore(firestoreRepository)
+            Toast.makeText(getApplication(), "Synced $count local records to Cloud Firestore!", Toast.LENGTH_SHORT).show()
         }
     }
 
